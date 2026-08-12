@@ -1,0 +1,325 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Empleado {
+  id             Int             @id @default(autoincrement())
+  nombre         String
+  sueldo         Float
+  margenHora     Float           @default(40)
+  margenDia      Float           @default(50)
+  activo         Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  lineasManoObra LineaManoObra[]
+}
+
+model ConfigViatico {
+  id                Int   @id @default(1)
+  litrosPorKm       Float @default(0.5)
+  precioCombustible Float   @default(120000)
+  costoFijoBase     Float   @default(500000)
+}
+
+model ConfigImpuesto {
+  id                 Int    @id @default(1)
+  ivaPorcentaje      Float  @default(21)
+  cotizacionUSD      Float?
+  tipoFacturaDefault String @default("B")
+  razonSocial        String @default("Maneiro Climatización")
+  bancoNombre        String? @default("Banco Galicia")
+  bancoNumeroCuenta  String? @default("CC 1024-8 044-3")
+  bancoCbu           String? @default("0070044320000010248039")
+  bancoAlias         String? @default("MANEIRO.CLIMA.BSAS")
+  bancoCuit          String? @default("30-71829384-9")
+}
+
+model Cliente {
+  id                     Int                    @id @default(autoincrement())
+  nombre                 String
+  cuit                   String?
+  condIva                String                 @default("Consumidor Final")
+  telefono               String?
+  email                  String?
+  notas                  String?
+  activo                 Boolean                @default(true)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  direcciones            Direccion[]
+  ordenes                Orden[]
+  movimientosFinancieros MovimientoFinanciero[]
+  equipoItems            EquipoItem[]
+
+  @@index([nombre])
+  @@index([cuit])
+}
+
+model Direccion {
+  id          Int          @id @default(autoincrement())
+  clienteId   Int
+  nombre      String
+  direccion   String?
+  ciudad      String?
+  km          Float        @default(0)
+  createdAt   DateTime     @default(now())
+  cliente     Cliente      @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  ordenes     Orden[]
+  equipoItems EquipoItem[]
+}
+
+model Orden {
+  id                     Int                    @id @default(autoincrement())
+  numero                 String                 @unique
+  tipo                   String                 // service | instalacion | venta | compra_proveedor
+  descripcion            String?
+  estado                 String                 @default("presupuesto") // presupuesto | pendiente_anticipo | en_ejecucion | completado | facturado | cobrado | cancelado
+  clienteId              Int?
+  proveedorId            Int?
+  direccionId            Int?
+  montoAnticipo          Float                    @default(0)
+  anticipoCobrado        Boolean                @default(false)
+  fechaInicioGarantia    DateTime?
+  fechaFinGarantia       DateTime?
+  totalSinIva            Float                    @default(0)
+  ivaMontoMonto          Float                    @default(0)
+  totalFinal             Float                    @default(0)
+  montoCobrado           Float                    @default(0)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  cliente                Cliente?               @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  proveedor              Proveedor?             @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
+  direccion              Direccion?             @relation(fields: [direccionId], references: [id])
+  lineasManoObra         LineaManoObra[]
+  lineasRepuesto         LineaRepuesto[]
+  lineasOtroCosto        LineaOtroCosto[]
+  viatico                OrdenViatico?
+  movimientosFinancieros MovimientoFinanciero[]
+
+  @@index([clienteId])
+  @@index([estado])
+  @@index([createdAt])
+}
+
+model LineaManoObra {
+  id             Int      @id @default(autoincrement())
+  ordenId        Int
+  empleadoId     Int
+  empleadoNombre String
+  modalidad      String
+  cantidad       Float
+  costoUnitario  Float    @default(0)
+  precioUnitario Float
+  costoTotal     Float    @default(0)
+  subtotal       Float
+  orden          Orden    @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  empleado       Empleado @relation(fields: [empleadoId], references: [id], onDelete: Restrict)
+}
+
+model LineaRepuesto {
+  id                  Int         @id @default(autoincrement())
+  ordenId             Int
+  equipoItemId        Int?
+  descripcion         String
+  cantidad            Float       @default(1)
+  costoUnitario       Float       @default(0)
+  precioVentaUnitario Float       @default(0)
+  costo               Float       @default(0)
+  subtotal            Float       @default(0)
+  orden               Orden       @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  equipoItem          EquipoItem? @relation(fields: [equipoItemId], references: [id], onDelete: SetNull)
+}
+
+model LineaOtroCosto {
+  id          Int    @id @default(autoincrement())
+  ordenId     Int
+  descripcion String
+  monto       Float
+  orden       Orden  @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+}
+
+model OrdenViatico {
+  id         Int   @id @default(autoincrement())
+  ordenId    Int   @unique
+  km         Float
+  costoFijo  Float
+  costoPorKm Float
+  viandas    Float   @default(0)
+  total      Float
+  orden      Orden @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+}
+
+model Proveedor {
+  id                     Int                    @id @default(autoincrement())
+  nombre                 String
+  cuit                   String?
+  condIva                String                 @default("Responsable Inscripto")
+  rubro                  String?
+  telefono               String?
+  email                  String?
+  cbu                    String?
+  alias                  String?
+  banco                  String?
+  activo                 Boolean                @default(true)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  equipoItems            EquipoItem[]
+  movimientosFinancieros MovimientoFinanciero[]
+  ordenes                Orden[]
+
+  @@index([nombre])
+}
+
+model EquipoItem {
+  id                     Int                    @id @default(autoincrement())
+  nombre                 String
+  tipo                   String                 @default("equipo") // equipo | material | insumo
+  numeroSerie            String?
+  proveedor              String?
+  proveedorId            Int?
+  clienteId              Int?
+  direccionId            Int?
+  precioCompra           Float                    @default(0)
+  precioVentaSugerido    Float?
+  stock                  Int                    @default(1)
+  ubicacion              String?                @default("Depósito")
+  fechaInicioGarantia    DateTime?
+  fechaFinGarantia       DateTime?
+  facturaCompraUrl       String?
+  facturaVentaUrl        String?
+  remitoUrl              String?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  proveedorRel           Proveedor?             @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
+  cliente                Cliente?               @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  direccion              Direccion?             @relation(fields: [direccionId], references: [id], onDelete: SetNull)
+  movimientosFinancieros MovimientoFinanciero[]
+  lineasRepuesto         LineaRepuesto[]
+
+  @@index([nombre])
+}
+
+model Caja {
+  id                     Int                    @id @default(autoincrement())
+  nombre                 String
+  tipo                   String                 // efectivo_ars | efectivo_usd | banco | mercadopago
+  activo                 Boolean                @default(true)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  movimientosFinancieros MovimientoFinanciero[]
+}
+
+model MovimientoFinanciero {
+  id             Int         @id @default(autoincrement())
+  tipo           String      // ingreso | egreso
+  categoria      String      @default("gasto_varios")
+  planCuenta     String?     @default("1.1 Services & Mantenimiento")
+  moneda         String      @default("ARS") // ARS | USD
+  monto          Float
+  montoUSD       Float?
+  cotizacionUSD  Float?
+  medioPago      String      @default("Efectivo")
+  fecha          DateTime    @default(now())
+  concepto       String
+  comprobanteUrl String?
+  ordenId        Int?
+  clienteId      Int?
+  proveedorId    Int?
+  equipoItemId   Int?
+  cajaId         Int?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  orden      Orden?      @relation(fields: [ordenId], references: [id], onDelete: SetNull)
+  cliente    Cliente?    @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  proveedor  Proveedor?  @relation(fields: [proveedorId], references: [id], onDelete: Restrict)
+  equipoItem EquipoItem? @relation(fields: [equipoItemId], references: [id], onDelete: SetNull)
+  caja       Caja?       @relation(fields: [cajaId], references: [id], onDelete: Restrict)
+
+  @@index([fecha])
+  @@index([tipo])
+  @@index([clienteId])
+  @@index([proveedorId])
+  @@index([fecha, tipo])
+}
+
+model Cheque {
+  id               Int      @id @default(autoincrement())
+  tipo             String   @default("recibido") // recibido | emitido
+  numero           String
+  banco            String
+  librador         String
+  cuitLibrador     String?
+  entregadoPor     String?  // Cliente o persona que entrega el cheque recibido
+  monto            Float
+  fechaEmision     DateTime @default(now())
+  fechaVencimiento DateTime
+  estado           String   @default("en_cartera") // en_cartera | depositado | entregado_proveedor | cobrado | rechazado
+  destino          String?  // Proveedor o destinatario a quien se le entrega
+  observaciones    String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([estado])
+}
+
+model Vencimiento {
+  id               Int       @id @default(autoincrement())
+  servicio         String    // Edes, Camuzzi, AFIP, ARBA, Alquiler, etc.
+  monto            Float
+  fechaVencimiento DateTime
+  pagado           Boolean   @default(false)
+  fechaPago        DateTime?
+  comprobanteUrl   String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model CategoriaTaxonomia {
+  id        Int      @id @default(autoincrement())
+  codigo    String
+  nombre    String
+  tipo      String   // ingreso | egreso
+  grupo     String   // Grupo o categoría padre
+  activa    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Empresa {
+  id               Int              @id @default(autoincrement())
+  razonSocial      String
+  cuit             String?
+  condIva          String           @default("Responsable Inscripto")
+  direccion        String?
+  telefono         String?
+  email            String?
+  activa           Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  cuentasBancarias CuentaBancaria[]
+
+  @@index([razonSocial])
+}
+
+model CuentaBancaria {
+  id           Int      @id @default(autoincrement())
+  empresaId    Int
+  banco        String
+  tipoCuenta   String   @default("Cuenta Corriente")
+  numeroCuenta String?
+  cbu          String?
+  alias        String?
+  moneda       String   @default("ARS") // ARS | USD
+  activa       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId])
+}
