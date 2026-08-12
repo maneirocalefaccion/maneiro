@@ -5,6 +5,12 @@ import { ToastProvider } from '@/components/ui/Toast';
 export const metadata = {
   title: 'Maneiro Climatización - ERP',
   description: 'Sistema de gestión integral para Maneiro Climatización',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Maneiro Clima',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
