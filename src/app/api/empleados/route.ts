@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { firestoreDb } from '@/lib/firestoreDb';
 import { z } from 'zod';
 import { empleadoSchema } from '@/lib/schemas';
 
@@ -11,8 +11,8 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * pageSize;
 
     const [data, total] = await Promise.all([
-      prisma.empleado.findMany({ skip, take: pageSize, orderBy: { createdAt: 'desc' } }),
-      prisma.empleado.count()
+      firestoreDb.findMany('empleados', { skip, take: pageSize, orderBy: { createdAt: 'desc' } }),
+      firestoreDb.count('empleados', )
     ]);
 
     return NextResponse.json({ data, total, page, pageSize });
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const validated = empleadoSchema.parse(body);
 
-    const empleado = await prisma.empleado.create({
+    const empleado = await firestoreDb.create('empleados', {
       data: validated
     });
 

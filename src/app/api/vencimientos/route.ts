@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { firestoreDb } from '@/lib/firestoreDb';
 import { z } from 'zod';
 
 const vencimientoSchema = z.object({
@@ -20,12 +20,9 @@ export async function GET(req: NextRequest) {
     if (estado === 'pendientes') where.pagado = false;
     if (estado === 'pagados') where.pagado = true;
 
-    const vencimientos = await prisma.vencimiento.findMany({
+    const vencimientos = await firestoreDb.findMany('vencimientos', {
       where,
-      orderBy: [
-        { pagado: 'asc' },
-        { fechaVencimiento: 'asc' }
-      ]
+      orderBy: { pagado: 'asc', fechaVencimiento: 'asc' }
     });
 
     return NextResponse.json({ data: vencimientos });
@@ -40,9 +37,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const validated = vencimientoSchema.parse(body);
 
-    const nuevo = await prisma.vencimiento.create({
-      data: validated
-    });
+    const nuevo = await firestoreDb.create('vencimientos', validated);
 
     return NextResponse.json(nuevo, { status: 201 });
   } catch (error) {

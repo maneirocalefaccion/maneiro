@@ -1,46 +1,54 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { firestoreDb } from '@/lib/firestoreDb';
 
 export async function GET(req: NextRequest) {
   try {
-    const rawEmpresas: any[] = await prisma.$queryRawUnsafe(`
-      SELECT * FROM Empresa WHERE activa = 1 ORDER BY razonSocial ASC
-    `);
+    const rawEmpresas = await firestoreDb.findMany('empresas', {
+      where: { activa: true },
+      orderBy: { razonSocial: 'asc' }
+    });
 
     // Fetch bank accounts for each company
     const empresasConCuentas = await Promise.all(
-      rawEmpresas.map(async (emp) => {
-        const cuentas: any[] = await prisma.$queryRawUnsafe(
-          `SELECT * FROM CuentaBancaria WHERE empresaId = ? AND activa = 1 ORDER BY id ASC`,
-          emp.id
-        );
+      rawEmpresas.map(async (emp: any) => {
+        const cuentas = await firestoreDb.findMany('cuentasBancarias', {
+          where: { empresaId: emp.id, activa: true },
+          orderBy: { id: 'asc' }
+        });
         return { ...emp, cuentasBancarias: cuentas };
       })
     );
 
     // If no companies exist, seed default "Maneiro Climatización"
     if (empresasConCuentas.length === 0) {
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO Empresa (razonSocial, cuit, condIva, activa, createdAt, updatedAt) VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-        'Maneiro Climatización',
-        '30-71829384-9',
-        'Responsable Inscripto'
-      );
-      const newEmpresas: any[] = await prisma.$queryRawUnsafe(`SELECT * FROM Empresa WHERE razonSocial = 'Maneiro Climatización' LIMIT 1`);
-      if (newEmpresas.length > 0) {
-        const mainId = newEmpresas[0].id;
-        await prisma.$executeRawUnsafe(
-          `INSERT INTO CuentaBancaria (empresaId, banco, tipoCuenta, numeroCuenta, cbu, alias, moneda, activa, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-          mainId,
-          'Banco Galicia',
-          'Cuenta Corriente',
-          'CC 1024-8 044-3',
-          '0070044320000010248039',
-          'MANEIRO.CLIMA.BSAS',
-          'ARS'
-        );
-        newEmpresas[0].cuentasBancarias = await prisma.$queryRawUnsafe(`SELECT * FROM CuentaBancaria WHERE empresaId = ?`, mainId);
-      }
+      const nuevaEmpresa = await firestoreDb.create('empresas', {
+        razonSocial: 'Maneiro Climatización',
+        cuit: '30-71829384-9',
+        condIva: 'Responsable Inscripto',
+        activa: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+
+      const mainId = nuevaEmpresa.id;
+      const nuevaCuenta = await firestoreDb.create('cuentasBancarias', {
+        empresaId: mainId,
+        banco: 'Banco Galicia',
+        tipoCuenta: 'Cuenta Corriente',
+        numeroCuenta: 'CC 1024-8 044-3',
+        cbu: '0070044320000010248039',
+        alias: 'MANEIRO.CLIMA.BSAS',
+        moneda: 'ARS',
+        activa: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      
+      const newEmpresas = [{
+        ...nuevaEmpresa,
+        cuentasBancarias: [nuevaCuenta]
+      }];
+
       return NextResponse.json({ data: newEmpresas, total: newEmpresas.length });
     }
 
@@ -60,22 +68,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'La razón social es requerida' }, { status: 400 });
     }
 
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO Empresa (razonSocial, cuit, condIva, direccion, telefono, email, activa, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      razonSocial.trim(),
-      cuit || null,
+    const created = await firestoreDb.create('empresas', {
+      razonSocial: razonSocial.trim(),
+      cuit: cuit || null,
       condIva,
-      direccion || null,
-      telefono || null,
-      email || null
-    );
+      direccion: direccion || null,
+      telefono: telefono || null,
+      email: email || null,
+      activa: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
 
-    const created: any[] = await prisma.$queryRawUnsafe(
-      `SELECT * FROM Empresa WHERE razonSocial = ? ORDER BY id DESC LIMIT 1`,
-      razonSocial.trim()
-    );
-
-    return NextResponse.json({ ...created[0], cuentasBancarias: [] }, { status: 201 });
+    return NextResponse.json({ ...created, cuentasBancarias: [] }, { status: 201 });
   } catch (error: any) {
     console.error('Error POST /api/empresas:', error);
     return NextResponse.json({ error: 'Error al crear empresa', details: String(error) }, { status: 500 });

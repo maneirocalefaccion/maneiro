@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { firestoreDb } from '@/lib/firestoreDb';
 import { z } from 'zod';
 
 export async function GET(req: NextRequest) {
@@ -9,33 +9,28 @@ export async function GET(req: NextRequest) {
     const pageSize = parseInt(searchParams.get('pageSize') || '50');
     const skip = (page - 1) * pageSize;
     
-    let data = await prisma.caja.findMany({ skip, take: pageSize, orderBy: { id: 'asc' } });
-    let total = await prisma.caja.count();
+    let data = await firestoreDb.findMany('cajas', { skip, take: pageSize, orderBy: { id: 'asc' } });
+    let total = await firestoreDb.count('cajas', );
 
     if (total === 0) {
-      await prisma.caja.createMany({
-        data: [
+      await Promise.all([
           { nombre: '💵 Caja Principal (Pesos)', tipo: 'efectivo_ars' },
           { nombre: '💵 Caja Chica (Pesos)', tipo: 'caja_chica' },
           { nombre: '💵 Caja Dólares', tipo: 'efectivo_usd' },
           { nombre: '🏦 Banco (CC / Transferencia)', tipo: 'banco' },
           { nombre: '📱 Mercado Pago', tipo: 'mercadopago' },
           { nombre: '📑 Cheques en Cartera', tipo: 'cheques_cartera' },
-        ]
-      });
-      data = await prisma.caja.findMany({ skip, take: pageSize, orderBy: { id: 'asc' } });
+        ].map((d: any) => firestoreDb.create('cajas', d)));
+      data = await firestoreDb.findMany('cajas', { skip, take: pageSize, orderBy: { id: 'asc' } });
       total = data.length;
     }
 
-    const movs = await prisma.movimientoFinanciero.findMany({
-      select: { tipo: true, medioPago: true, monto: true, montoUSD: true, cajaId: true }
-    });
+    const movs = await firestoreDb.findMany('movimientos');
 
-    const chequesEnCartera = await prisma.cheque.findMany({
-      where: { estado: 'en_cartera' },
-      select: { monto: true }
+    const chequesEnCartera = await firestoreDb.findMany('cheques', {
+      where: { estado: 'en_cartera' }
     });
-    const totalChequesMonto = chequesEnCartera.reduce((a, b) => a + b.monto, 0);
+    const totalChequesMonto = chequesEnCartera.reduce((a, b) => a + (b.monto || 0), 0);
 
     const dataConSaldos = data.map(caja => {
       if (caja.tipo === 'cheques_cartera') {
@@ -70,16 +65,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ data: dataConSaldos, total, page, pageSize });
   } catch (error) {
-  if (error instanceof z.ZodError) {
-    return NextResponse.json({ error: 'Datos inválidos', details: error.issues }, { status: 400 });
-  }
-  if (typeof error === 'object' && error !== null && 'code' in error) {
-    const prismaError = error;
-    if (prismaError.code === 'P2025') return NextResponse.json({ error: 'Registro no encontrado' }, { status: 404 });
-    if (prismaError.code === 'P2002') return NextResponse.json({ error: 'Registro duplicado' }, { status: 409 });
-    if (prismaError.code === 'P2003') return NextResponse.json({ error: 'No se puede eliminar: tiene registros relacionados' }, { status: 409 });
-  }
-  console.error('Error:', error);
-  return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Datos inválidos', details: error.issues }, { status: 400 });
+    }
+    console.error('Error:', error);
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }
 }

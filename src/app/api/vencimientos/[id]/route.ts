@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { firestoreDb } from '@/lib/firestoreDb';
 import { z } from 'zod';
 
 const vencimientoUpdateSchema = z.object({
@@ -21,10 +21,12 @@ export async function PUT(
     const body = await req.json();
     const validated = vencimientoUpdateSchema.parse(body);
 
-    const updated = await prisma.vencimiento.update({
-      where: { id: numericId },
-      data: validated,
-    });
+    const existing = await firestoreDb.findById('vencimientos', numericId);
+    if (!existing) {
+      return NextResponse.json({ error: 'Registro no encontrado' }, { status: 404 });
+    }
+
+    const updated = await firestoreDb.update('vencimientos', numericId, validated);
 
     return NextResponse.json(updated);
   } catch (error) {
@@ -44,9 +46,12 @@ export async function DELETE(
     const { id } = await params;
     const numericId = parseInt(id);
 
-    await prisma.vencimiento.delete({
-      where: { id: numericId },
-    });
+    const existing = await firestoreDb.findById('vencimientos', numericId);
+    if (!existing) {
+      return NextResponse.json({ error: 'Registro no encontrado' }, { status: 404 });
+    }
+
+    await firestoreDb.delete('vencimientos', numericId);
 
     return NextResponse.json({ message: 'Vencimiento eliminado' });
   } catch (error) {

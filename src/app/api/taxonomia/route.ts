@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { firestoreDb } from '@/lib/firestoreDb';
 import { z } from 'zod';
 import { taxonomiaSchema } from '@/lib/schemas';
 
@@ -11,8 +11,8 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * pageSize;
 
     const [data, total] = await Promise.all([
-      prisma.categoriaTaxonomia.findMany({ skip, take: pageSize, orderBy: { nombre: 'asc' } }),
-      prisma.categoriaTaxonomia.count()
+      firestoreDb.findMany('taxonomia', { skip, take: pageSize, orderBy: { nombre: 'asc' } }),
+      firestoreDb.count('taxonomia', )
     ]);
 
     return NextResponse.json({ data, total, page, pageSize });
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const validated = taxonomiaSchema.parse(body);
 
-    const item = await prisma.categoriaTaxonomia.create({
+    const item = await firestoreDb.create('taxonomia', {
       data: validated
     });
 

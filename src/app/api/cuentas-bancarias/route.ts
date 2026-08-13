@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { firestoreDb } from '@/lib/firestoreDb';
 
 export async function GET(req: NextRequest) {
   try {
@@ -8,12 +8,15 @@ export async function GET(req: NextRequest) {
 
     let cuentas: any[];
     if (empresaId) {
-      cuentas = await prisma.$queryRawUnsafe(
-        `SELECT * FROM CuentaBancaria WHERE empresaId = ? AND activa = 1 ORDER BY id ASC`,
-        parseInt(empresaId)
-      );
+      cuentas = await firestoreDb.findMany('cuentasBancarias', {
+        where: { empresaId: parseInt(empresaId), activa: true },
+        orderBy: { id: 'asc' }
+      });
     } else {
-      cuentas = await prisma.$queryRawUnsafe(`SELECT * FROM CuentaBancaria WHERE activa = 1 ORDER BY id ASC`);
+      cuentas = await firestoreDb.findMany('cuentasBancarias', {
+        where: { activa: true },
+        orderBy: { id: 'asc' }
+      });
     }
 
     return NextResponse.json({ data: cuentas, total: cuentas.length });
@@ -32,24 +35,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Empresa y Banco son requeridos' }, { status: 400 });
     }
 
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO CuentaBancaria (empresaId, banco, tipoCuenta, numeroCuenta, cbu, alias, moneda, activa, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      parseInt(empresaId),
-      banco.trim(),
+    const created = await firestoreDb.create('cuentasBancarias', {
+      empresaId: parseInt(empresaId),
+      banco: banco.trim(),
       tipoCuenta,
-      numeroCuenta || null,
-      cbu || null,
-      alias || null,
-      moneda
-    );
+      numeroCuenta: numeroCuenta || null,
+      cbu: cbu || null,
+      alias: alias || null,
+      moneda,
+      activa: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
 
-    const created: any[] = await prisma.$queryRawUnsafe(
-      `SELECT * FROM CuentaBancaria WHERE empresaId = ? AND banco = ? ORDER BY id DESC LIMIT 1`,
-      parseInt(empresaId),
-      banco.trim()
-    );
-
-    return NextResponse.json(created[0], { status: 201 });
+    return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
     console.error('Error POST /api/cuentas-bancarias:', error);
     return NextResponse.json({ error: 'Error al crear cuenta bancaria' }, { status: 500 });

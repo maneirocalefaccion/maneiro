@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { firestoreDb } from '@/lib/firestoreDb';
 import { z } from 'zod';
 import { inventarioSchema } from '@/lib/schemas';
 
@@ -11,28 +11,21 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * pageSize;
 
     const [data, total] = await Promise.all([
-      prisma.equipoItem.findMany({ 
+      firestoreDb.findMany('inventario', { 
         skip, 
         take: pageSize, 
-        orderBy: { createdAt: 'desc' },
-        include: { cliente: true, direccion: true, proveedorRel: true }
+        orderBy: { createdAt: 'desc' }
       }),
-      prisma.equipoItem.count()
+      firestoreDb.count('inventario', )
     ]);
 
     return NextResponse.json({ data, total, page, pageSize });
   } catch (error) {
-  if (error instanceof z.ZodError) {
-    return NextResponse.json({ error: 'Datos inválidos', details: error.issues }, { status: 400 });
-  }
-  if (typeof error === 'object' && error !== null && 'code' in error) {
-    const prismaError = error;
-    if (prismaError.code === 'P2025') return NextResponse.json({ error: 'Registro no encontrado' }, { status: 404 });
-    if (prismaError.code === 'P2002') return NextResponse.json({ error: 'Registro duplicado' }, { status: 409 });
-    if (prismaError.code === 'P2003') return NextResponse.json({ error: 'No se puede eliminar: tiene registros relacionados' }, { status: 409 });
-  }
-  console.error('Error:', error);
-  return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Datos inválidos', details: error.issues }, { status: 400 });
+    }
+    console.error('Error:', error);
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }
 }
 
@@ -60,23 +53,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 });
     }
 
-    const item = await prisma.equipoItem.create({
-      data: {
-        nombre,
-        tipo,
-        numeroSerie: numeroSerie || null,
-        proveedor: proveedor || null,
-        proveedorId: proveedorId ? parseInt(proveedorId) : undefined,
-        precioCompra: parseFloat(precioCompra || 0),
-        precioVentaSugerido: precioVentaSugerido ? parseFloat(precioVentaSugerido) : null,
-        stock: parseInt(stock || 1),
-        ubicacion: ubicacion || 'Depósito',
-        fechaInicioGarantia: fechaInicioGarantia ? new Date(fechaInicioGarantia) : null,
-        fechaFinGarantia: fechaFinGarantia ? new Date(fechaFinGarantia) : null,
-        facturaCompraUrl: facturaCompraUrl || null,
-        facturaVentaUrl: facturaVentaUrl || null,
-        remitoUrl: remitoUrl || null,
-      }
+    const item = await firestoreDb.create('inventario', {
+      nombre,
+      tipo,
+      numeroSerie: numeroSerie || null,
+      proveedor: proveedor || null,
+      proveedorId: proveedorId ? parseInt(proveedorId) : undefined,
+      precioCompra: parseFloat(precioCompra || 0),
+      precioVentaSugerido: precioVentaSugerido ? parseFloat(precioVentaSugerido) : null,
+      stock: parseInt(stock || 1),
+      ubicacion: ubicacion || 'Depósito',
+      fechaInicioGarantia: fechaInicioGarantia ? new Date(fechaInicioGarantia).toISOString() : null,
+      fechaFinGarantia: fechaFinGarantia ? new Date(fechaFinGarantia).toISOString() : null,
+      facturaCompraUrl: facturaCompraUrl || null,
+      facturaVentaUrl: facturaVentaUrl || null,
+      remitoUrl: remitoUrl || null,
     });
 
     return NextResponse.json(item, { status: 201 });

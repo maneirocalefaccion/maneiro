@@ -1,6 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
+import { firestoreDb } from '@/lib/firestoreDb';
 
 export async function POST(req: NextRequest) {
   try {

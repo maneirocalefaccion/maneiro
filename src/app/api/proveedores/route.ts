@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { firestoreDb } from '@/lib/firestoreDb';
 import { z } from 'zod';
 import { proveedorSchema } from '@/lib/schemas';
 
@@ -11,13 +11,13 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * pageSize;
 
     const [data, total] = await Promise.all([
-      prisma.proveedor.findMany({
+      firestoreDb.findMany('proveedores', {
         where: { activo: true },
         skip,
         take: pageSize,
         orderBy: { createdAt: 'desc' }
       }),
-      prisma.proveedor.count({ where: { activo: true } })
+      firestoreDb.count('proveedores', { where: { activo: true } })
     ]);
 
     return NextResponse.json({ data, total, page, pageSize });
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const validated = proveedorSchema.parse(body);
 
-    const proveedor = await prisma.proveedor.create({
+    const proveedor = await firestoreDb.create('proveedores', {
       data: {
         ...validated,
         activo: true

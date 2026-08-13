@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { firestoreDb } from '@/lib/firestoreDb';
 import { z } from 'zod';
 import { ordenSchema } from '@/lib/schemas';
 
@@ -7,19 +7,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const { id: idStr } = await params;
     const id = parseInt(idStr);
-    const orden = await prisma.orden.findUniqueOrThrow({
-      where: { id },
-      include: {
-        cliente: true,
-        direccion: true,
-        lineasManoObra: true,
-        lineasRepuesto: true,
-        lineasOtroCosto: true,
-        viatico: true,
-        movimientosFinancieros: true,
+    const orden = await firestoreDb.findById('ordenes', idStr);
+    
+    if (orden) {
+      if (orden.clienteId) {
+         orden.cliente = await firestoreDb.findById('clientes', orden.clienteId);
       }
-    });
-    const sumIngresos = orden.movimientosFinancieros
+      if (orden.direccionId) {
+         orden.direccion = await firestoreDb.findById('direcciones', orden.direccionId);
+      }
+      orden.movimientosFinancieros = await firestoreDb.findMany('movimientos', { where: { ordenId: id } });
+    }
+
+    const sumIngresos = orden?.movimientosFinancieros
       ? orden.movimientosFinancieros
           .filter((m: any) => m.tipo === 'ingreso')
           .reduce((acc: number, m: any) => acc + (m.monto || 0), 0)
@@ -28,17 +28,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({ ...orden, montoCobrado: montoCobradoReal });
   } catch (error) {
-  if (error instanceof z.ZodError) {
-    return NextResponse.json({ error: 'Datos inválidos', details: error.issues }, { status: 400 });
-  }
-  if (typeof error === 'object' && error !== null && 'code' in error) {
-    const prismaError = error;
-    if (prismaError.code === 'P2025') return NextResponse.json({ error: 'Registro no encontrado' }, { status: 404 });
-    if (prismaError.code === 'P2002') return NextResponse.json({ error: 'Registro duplicado' }, { status: 409 });
-    if (prismaError.code === 'P2003') return NextResponse.json({ error: 'No se puede eliminar: tiene registros relacionados' }, { status: 409 });
-  }
-  console.error('Error:', error);
-  return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Datos inválidos', details: error.issues }, { status: 400 });
+    }
+    console.error('Error:', error);
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }
 }
 
@@ -79,10 +73,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (fechaInicioGarantia !== undefined) dataToUpdate.fechaInicioGarantia = fechaInicioGarantia ? new Date(fechaInicioGarantia) : null;
     if (fechaFinGarantia !== undefined) dataToUpdate.fechaFinGarantia = fechaFinGarantia ? new Date(fechaFinGarantia) : null;
 
-    const orden = await prisma.orden.update({
-      where: { id },
-      data: dataToUpdate
-    });
+    const orden = await firestoreDb.update('ordenes', idStr, dataToUpdate);
 
     return NextResponse.json(orden);
   } catch (error: any) {
@@ -99,21 +90,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const { id: idStr } = await params;
     const id = parseInt(idStr);
-    await prisma.$transaction(async (tx) => {
-      await tx.orden.delete({ where: { id } });
-    });
+    await firestoreDb.delete('ordenes', idStr);
     return NextResponse.json({ success: true });
   } catch (error) {
-  if (error instanceof z.ZodError) {
-    return NextResponse.json({ error: 'Datos inválidos', details: error.issues }, { status: 400 });
-  }
-  if (typeof error === 'object' && error !== null && 'code' in error) {
-    const prismaError = error;
-    if (prismaError.code === 'P2025') return NextResponse.json({ error: 'Registro no encontrado' }, { status: 404 });
-    if (prismaError.code === 'P2002') return NextResponse.json({ error: 'Registro duplicado' }, { status: 409 });
-    if (prismaError.code === 'P2003') return NextResponse.json({ error: 'No se puede eliminar: tiene registros relacionados' }, { status: 409 });
-  }
-  console.error('Error:', error);
-  return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Datos inválidos', details: error.issues }, { status: 400 });
+    }
+    console.error('Error:', error);
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }
 }

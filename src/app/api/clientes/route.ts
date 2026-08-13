@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { firestoreDb } from '@/lib/firestoreDb';
 import { z } from 'zod';
 import { clienteSchema } from '@/lib/schemas';
 
@@ -20,13 +20,13 @@ export async function GET(req: NextRequest) {
     }
 
     const [data, total] = await Promise.all([
-      prisma.cliente.findMany({
+      firestoreDb.findMany('clientes', {
         where: whereClause,
         skip,
         take: pageSize,
         orderBy: { nombre: 'asc' }
       }),
-      prisma.cliente.count({ where: whereClause })
+      firestoreDb.count('clientes', { where: whereClause })
     ]);
 
     return NextResponse.json({ data, total, page, pageSize });
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const validated = clienteSchema.parse(body);
 
-    const cliente = await prisma.cliente.create({
+    const cliente = await firestoreDb.create('clientes', {
       data: {
         ...validated,
         activo: true

@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { firestoreDb } from '@/lib/firestoreDb';
 import { z } from 'zod';
 import { movimientoSchema as movimientoFinancieroSchema } from '@/lib/schemas';
 
@@ -47,19 +47,27 @@ export async function GET(req: NextRequest) {
     }
 
     const [data, total] = await Promise.all([
-      prisma.movimientoFinanciero.findMany({
+      firestoreDb.findMany('movimientos', {
         where,
         skip,
         take: pageSize,
         orderBy: { fecha: 'desc' }
       }),
-      prisma.movimientoFinanciero.count({ where })
+      firestoreDb.count('movimientos', { where })
     ]);
     
-    const totalesGroup = await prisma.movimientoFinanciero.groupBy({
-      by: ['tipo', 'moneda'],
-      _sum: { monto: true, montoUSD: true },
-      where
+    const allMovs = await firestoreDb.findMany('movimientos', { where });
+    const totalesGroup: any[] = [];
+    allMovs.forEach(m => {
+       const mTipo = m.tipo || 'ingreso';
+       const mMoneda = m.moneda || 'ARS';
+       let group = totalesGroup.find(g => g.tipo === mTipo && g.moneda === mMoneda);
+       if (!group) {
+          group = { tipo: mTipo, moneda: mMoneda, _sum: { monto: 0, montoUSD: 0 } };
+          totalesGroup.push(group);
+       }
+       group._sum.monto += (m.monto || 0);
+       group._sum.montoUSD += (m.montoUSD || 0);
     });
     
     const ingARS = totalesGroup.filter(t => t.tipo === 'ingreso' && (t.moneda === 'ARS' || !t.moneda));
@@ -77,14 +85,13 @@ export async function GET(req: NextRequest) {
     const anioParam = searchParams.get('anio');
     const targetYear = anioParam ? parseInt(anioParam) : new Date().getFullYear();
     
-    const movimientosAnio = await prisma.movimientoFinanciero.findMany({
+    const movimientosAnio = await firestoreDb.findMany('movimientos', {
       where: {
         fecha: {
           gte: new Date(`${targetYear}-01-01T00:00:00.000Z`),
           lte: new Date(`${targetYear}-12-31T23:59:59.999Z`)
         }
-      },
-      select: { tipo: true, moneda: true, monto: true, montoUSD: true, fecha: true }
+      }
     });
 
     const mesesNombres = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -145,18 +152,12 @@ export async function GET(req: NextRequest) {
       totales: totalesGroup, 
       resumen 
     });
-  } catch (error) {
-  if (error instanceof z.ZodError) {
-    return NextResponse.json({ error: 'Datos inválidos', details: error.issues }, { status: 400 });
-  }
-  if (typeof error === 'object' && error !== null && 'code' in error) {
-    const prismaError = error;
-    if (prismaError.code === 'P2025') return NextResponse.json({ error: 'Registro no encontrado' }, { status: 404 });
-    if (prismaError.code === 'P2002') return NextResponse.json({ error: 'Registro duplicado' }, { status: 409 });
-    if (prismaError.code === 'P2003') return NextResponse.json({ error: 'No se puede eliminar: tiene registros relacionados' }, { status: 409 });
-  }
-  console.error('Error in finanzas:', error);
-  return NextResponse.json({ error: 'Error interno del servidor', details: (error as Error).message, stack: (error as Error).stack }, { status: 500 });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Datos inválidos', details: error.issues }, { status: 400 });
+    }
+    console.error('Error in finanzas:', error);
+    return NextResponse.json({ error: 'Error interno del servidor', details: (error as Error).message, stack: (error as Error).stack }, { status: 500 });
   }
 }
 
@@ -186,25 +187,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Faltan campos obligatorios (tipo, medioPago, concepto)' }, { status: 400 });
     }
 
-    const movimiento = await prisma.movimientoFinanciero.create({
-      data: {
-        tipo,
-        categoria: categoria || (tipo === 'ingreso' ? 'cobro_general' : 'gasto_general'),
-        planCuenta: planCuenta || null,
-        moneda: moneda || 'ARS',
-        monto: Math.round(parseFloat(monto || 0)),
-        montoUSD: montoUSD ? Math.round(parseFloat(montoUSD)) : null,
-        cotizacionUSD: cotizacionUSD ? parseFloat(cotizacionUSD) : null,
-        medioPago,
-        cajaId: cajaId ? parseInt(cajaId) : undefined,
-        ordenId: ordenId ? parseInt(ordenId) : undefined,
-        clienteId: clienteId ? parseInt(clienteId) : undefined,
-        proveedorId: proveedorId ? parseInt(proveedorId) : undefined,
-        equipoItemId: equipoItemId ? parseInt(equipoItemId) : undefined,
-        fecha: fecha ? new Date(fecha) : new Date(),
-        concepto,
-        comprobanteUrl: comprobanteUrl || null
-      }
+    const movimiento = await firestoreDb.create('movimientos', {
+      tipo,
+      categoria: categoria || (tipo === 'ingreso' ? 'cobro_general' : 'gasto_general'),
+      planCuenta: planCuenta || null,
+      moneda: moneda || 'ARS',
+      monto: Math.round(parseFloat(monto || 0)),
+      montoUSD: montoUSD ? Math.round(parseFloat(montoUSD)) : null,
+      cotizacionUSD: cotizacionUSD ? parseFloat(cotizacionUSD) : null,
+      medioPago,
+      cajaId: cajaId ? parseInt(cajaId) : undefined,
+      ordenId: ordenId ? parseInt(ordenId) : undefined,
+      clienteId: clienteId ? parseInt(clienteId) : undefined,
+      proveedorId: proveedorId ? parseInt(proveedorId) : undefined,
+      equipoItemId: equipoItemId ? parseInt(equipoItemId) : undefined,
+      fecha: fecha ? new Date(fecha).toISOString() : new Date().toISOString(),
+      concepto,
+      comprobanteUrl: comprobanteUrl || null
     });
 
     return NextResponse.json(movimiento, { status: 201 });

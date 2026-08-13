@@ -1,14 +1,13 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { firestoreDb } from '@/lib/firestoreDb';
 import { z } from 'zod';
 import { configuracionSchema } from '@/lib/schemas';
 
 export async function GET(req: NextRequest) {
   try {
-    const configViatico = await prisma.configViatico.findFirst();
-    const rawImp: any[] = await prisma.$queryRawUnsafe(`SELECT * FROM ConfigImpuesto LIMIT 1`);
-    const configImpuesto = rawImp[0] || {};
-    return NextResponse.json({ viatico: configViatico || {}, impuesto: configImpuesto });
+    const configViatico = await firestoreDb.findById('configuracion', 'viatico');
+    const configImpuesto = await firestoreDb.findById('configuracion', 'impuesto');
+    return NextResponse.json({ viatico: configViatico || {}, impuesto: configImpuesto || {} });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Datos inválidos', details: error.issues }, { status: 400 });
@@ -24,50 +23,39 @@ export async function POST(req: NextRequest) {
     const validated = configuracionSchema.parse(body);
 
     if (validated.viatico) {
-      const existing = await prisma.configViatico.findFirst();
+      const existing = await firestoreDb.findById('configuracion', 'viatico');
       if (existing) {
-        await prisma.configViatico.update({ where: { id: existing.id }, data: validated.viatico });
+        await firestoreDb.update('configuracion', 'viatico', validated.viatico);
       } else {
-        await prisma.configViatico.create({ data: validated.viatico });
+        await firestoreDb.create('configuracion', { id: 'viatico', ...validated.viatico });
       }
     }
 
     if (validated.impuesto) {
-      const existing = await prisma.configImpuesto.findFirst();
       const imp = validated.impuesto;
+      const impData = {
+        razonSocial: imp.razonSocial || 'Maneiro Climatización',
+        bancoNombre: imp.bancoNombre || null,
+        bancoNumeroCuenta: imp.bancoNumeroCuenta || null,
+        bancoCbu: imp.bancoCbu || null,
+        bancoAlias: imp.bancoAlias || null,
+        bancoCuit: imp.bancoCuit || null,
+        ivaPorcentaje: imp.ivaPorcentaje || 21,
+        tipoFacturaDefault: imp.tipoFacturaDefault || 'B'
+      };
+
+      const existing = await firestoreDb.findById('configuracion', 'impuesto');
       if (existing) {
-        await prisma.$executeRawUnsafe(
-          `UPDATE ConfigImpuesto SET razonSocial=?, bancoNombre=?, bancoNumeroCuenta=?, bancoCbu=?, bancoAlias=?, bancoCuit=?, ivaPorcentaje=?, tipoFacturaDefault=? WHERE id=?`,
-          imp.razonSocial || 'Maneiro Climatización',
-          imp.bancoNombre || null,
-          imp.bancoNumeroCuenta || null,
-          imp.bancoCbu || null,
-          imp.bancoAlias || null,
-          imp.bancoCuit || null,
-          imp.ivaPorcentaje || 21,
-          imp.tipoFacturaDefault || 'B',
-          existing.id
-        );
+        await firestoreDb.update('configuracion', 'impuesto', impData);
       } else {
-        await prisma.$executeRawUnsafe(
-          `INSERT INTO ConfigImpuesto (id, ivaPorcentaje, tipoFacturaDefault, razonSocial, bancoNombre, bancoNumeroCuenta, bancoCbu, bancoAlias, bancoCuit) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          imp.ivaPorcentaje || 21,
-          imp.tipoFacturaDefault || 'B',
-          imp.razonSocial || 'Maneiro Climatización',
-          imp.bancoNombre || null,
-          imp.bancoNumeroCuenta || null,
-          imp.bancoCbu || null,
-          imp.bancoAlias || null,
-          imp.bancoCuit || null
-        );
+        await firestoreDb.create('configuracion', { id: 'impuesto', ...impData });
       }
     }
 
-    const configViatico = await prisma.configViatico.findFirst();
-    const rawImp: any[] = await prisma.$queryRawUnsafe(`SELECT * FROM ConfigImpuesto LIMIT 1`);
-    const configImpuesto = rawImp[0] || {};
+    const configViatico = await firestoreDb.findById('configuracion', 'viatico');
+    const configImpuesto = await firestoreDb.findById('configuracion', 'impuesto');
 
-    return NextResponse.json({ viatico: configViatico, impuesto: configImpuesto }, { status: 201 });
+    return NextResponse.json({ viatico: configViatico || {}, impuesto: configImpuesto || {} }, { status: 201 });
   } catch (error: any) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Datos inválidos', details: error.issues }, { status: 400 });
@@ -76,4 +64,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Error interno del servidor', details: error?.message || String(error) }, { status: 500 });
   }
 }
-
