@@ -18,14 +18,19 @@ export const firestoreDb = {
     if (options.where) {
       Object.entries(options.where).forEach(([key, val]) => {
         if (val !== undefined && val !== null) {
-          query = query.where(key, '==', val);
+          if (typeof val === 'object' && !(val instanceof Date)) {
+            // Prisma style where clauses
+            if (val.gte) query = query.where(key, '>=', val.gte);
+            if (val.lte) query = query.where(key, '<=', val.lte);
+            if (val.gt) query = query.where(key, '>', val.gt);
+            if (val.lt) query = query.where(key, '<', val.lt);
+            if (val.in) query = query.where(key, 'in', val.in);
+            if (val.startsWith) query = query.where(key, '>=', val.startsWith).where(key, '<', val.startsWith + '\uf8ff');
+            // contains is not natively supported by Firestore well, we skip adding it to the query and let the in-memory filter catch it if possible, or just ignore. 
+          } else {
+            query = query.where(key, '==', val);
+          }
         }
-      });
-    }
-
-    if (options.orderBy) {
-      Object.entries(options.orderBy).forEach(([field, dir]) => {
-        query = query.orderBy(field, dir);
       });
     }
 
@@ -44,6 +49,17 @@ export const firestoreDb = {
           return val && String(val).toLowerCase().includes(searchTerm);
         })
       );
+    }
+
+    // In-memory orderBy to avoid Firestore composite index errors
+    if (options.orderBy) {
+      Object.entries(options.orderBy).forEach(([field, dir]) => {
+        results.sort((a: any, b: any) => {
+          if (a[field] < b[field]) return dir === 'asc' ? -1 : 1;
+          if (a[field] > b[field]) return dir === 'asc' ? 1 : -1;
+          return 0;
+        });
+      });
     }
 
     // Manual pagination (skip/take) for in-memory / filtered results
