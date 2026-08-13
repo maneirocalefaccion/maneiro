@@ -15,10 +15,9 @@ function getAdminDb() {
   let adminApp;
 
   if (clientEmail && privateKey) {
-    // Handle escaped newlines from environment variables
-    if (privateKey.includes('\\n')) {
-      privateKey = privateKey.replace(/\\n/g, '\n');
-    }
+    // Aggressively clean up the private key because Vercel env vars often have literal quotes or escaped newlines
+    privateKey = privateKey.replace(/^"|"$/g, ''); // Remove surrounding quotes if they exist
+    privateKey = privateKey.replace(/\\n/g, '\n'); // Convert literal \n to actual newlines
 
     adminApp = initAdminApp({
       credential: cert({
